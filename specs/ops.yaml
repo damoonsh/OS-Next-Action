@@ -1,0 +1,575 @@
+openapi: 3.0.0
+info:
+  title: Finance API
+  description: Comprehensive finance API for managing invoices, costs, revenue, payments, accounts, and budgets
+  version: 1.0.0
+  contact:
+    name: Finance API Team
+servers:
+  - url: https://api.finance-app.com/v1
+    description: Production server
+  - url: https://staging-api.finance-app.com/v1
+    description: Staging server
+paths:
+  # Invoice Endpoints
+  /invoices/:
+    get:
+      summary: Retrieve all invoices
+      tags: [Invoices]
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, paid, overdue, cancelled, draft]
+        - name: date_range
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of invoices
+    post:
+      summary: Create a new invoice
+      tags: [Invoices]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InvoiceCreate'
+      responses:
+        '201':
+          description: Invoice created successfully
+
+  /invoices/{invoice_id}:
+    get:
+      summary: Retrieve a specific invoice by ID
+      tags: [Invoices]
+      parameters:
+        - name: invoice_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Invoice details
+    put:
+      summary: Update an existing invoice
+      tags: [Invoices]
+      parameters:
+        - name: invoice_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Invoice updated
+    patch:
+      summary: Partially update invoice fields
+      tags: [Invoices]
+      parameters:
+        - name: invoice_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Invoice partially updated
+    delete:
+      summary: Delete an invoice
+      tags: [Invoices]
+      parameters:
+        - name: invoice_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Invoice deleted
+
+  /invoices/{invoice_id}/status:
+    get:
+      summary: Get the current status of a specific invoice
+      tags: [Invoices]
+      parameters:
+        - name: invoice_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Invoice status
+    put:
+      summary: Update the status of a specific invoice
+      tags: [Invoices]
+      parameters:
+        - name: invoice_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  enum: [pending, paid, overdue, cancelled]
+      responses:
+        '200':
+          description: Status updated
+
+  # Cost Management Endpoints
+  /costs/{service_id}:
+    get:
+      summary: Retrieve total costs for a specific service
+      tags: [Costs]
+      parameters:
+        - name: service_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: date_filter
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Service costs
+    post:
+      summary: Add new cost entry for a service
+      tags: [Costs]
+      parameters:
+        - name: service_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '201':
+          description: Cost entry created
+    delete:
+      summary: Delete all cost entries for a service
+      tags: [Costs]
+      parameters:
+        - name: service_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: confirmation
+          in: query
+          required: true
+          schema:
+            type: boolean
+      responses:
+        '204':
+          description: All costs deleted
+
+  /costs/{service_id}/{cost_id}:
+    put:
+      summary: Update an existing cost entry
+      tags: [Costs]
+      parameters:
+        - name: service_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: cost_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Cost entry updated
+    patch:
+      summary: Partially update cost entry fields
+      tags: [Costs]
+      parameters:
+        - name: service_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: cost_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Cost entry partially updated
+    delete:
+      summary: Remove a cost entry
+      tags: [Costs]
+      parameters:
+        - name: service_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: cost_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Cost entry deleted
+
+  # Revenue Management Endpoints
+  /revenue/{service_id}:
+    get:
+      summary: Retrieve total revenue for a specific service
+      tags: [Revenue]
+      parameters:
+        - name: service_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: date_range
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Service revenue
+    post:
+      summary: Record new revenue entry for a service
+      tags: [Revenue]
+      parameters:
+        - name: service_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '201':
+          description: Revenue entry created
+
+  /revenue/{service_id}/{revenue_id}:
+    put:
+      summary: Update an existing revenue record
+      tags: [Revenue]
+      parameters:
+        - name: service_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: revenue_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Revenue record updated
+    patch:
+      summary: Partially update revenue record
+      tags: [Revenue]
+      parameters:
+        - name: service_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: revenue_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Revenue record partially updated
+    delete:
+      summary: Remove a revenue entry
+      tags: [Revenue]
+      parameters:
+        - name: service_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: revenue_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Revenue entry deleted
+
+  # Payment Endpoints
+  /payments/:
+    get:
+      summary: List all payments
+      tags: [Payments]
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [processing, completed, failed, refunded]
+        - name: method
+          in: query
+          schema:
+            type: string
+        - name: date_range
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of payments
+    post:
+      summary: Process a new payment for an invoice
+      tags: [Payments]
+      responses:
+        '201':
+          description: Payment processed
+
+  /payments/{payment_id}:
+    get:
+      summary: Retrieve details of a specific payment
+      tags: [Payments]
+      parameters:
+        - name: payment_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Payment details
+    patch:
+      summary: Partially update payment details
+      tags: [Payments]
+      parameters:
+        - name: payment_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Payment updated
+    delete:
+      summary: Cancel/delete a payment
+      tags: [Payments]
+      parameters:
+        - name: payment_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Payment cancelled
+
+  # Account Management Endpoints
+  /accounts/:
+    get:
+      summary: Retrieve all financial accounts
+      tags: [Accounts]
+      responses:
+        '200':
+          description: List of accounts
+
+  /accounts/{account_id}:
+    get:
+      summary: Get specific account details and current balance
+      tags: [Accounts]
+      parameters:
+        - name: account_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Account details
+    patch:
+      summary: Update account information
+      tags: [Accounts]
+      parameters:
+        - name: account_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Account updated
+    delete:
+      summary: Close/delete an account
+      tags: [Accounts]
+      parameters:
+        - name: account_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Account closed
+
+  # Budget Endpoints
+  /budgets/:
+    get:
+      summary: List all budgets
+      tags: [Budgets]
+      parameters:
+        - name: category
+          in: query
+          schema:
+            type: string
+        - name: period
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of budgets
+    post:
+      summary: Create new budget
+      tags: [Budgets]
+      responses:
+        '201':
+          description: Budget created
+
+  /budgets/{budget_id}:
+    get:
+      summary: Retrieve specific budget details
+      tags: [Budgets]
+      parameters:
+        - name: budget_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Budget details
+    put:
+      summary: Update existing budget allocations
+      tags: [Budgets]
+      parameters:
+        - name: budget_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Budget updated
+    patch:
+      summary: Partially update budget
+      tags: [Budgets]
+      parameters:
+        - name: budget_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Budget partially updated
+    delete:
+      summary: Delete a budget
+      tags: [Budgets]
+      parameters:
+        - name: budget_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Budget deleted
+
+components:
+  schemas:
+    InvoiceCreate:
+      type: object
+      properties:
+        customer_id:
+          type: string
+        amount:
+          type: number
+          format: float
+        due_date:
+          type: string
+          format: date
+        line_items:
+          type: array
+          items:
+            $ref: '#/components/schemas/LineItem'
+      required:
+        - customer_id
+        - amount
+        - due_date
+
+    LineItem:
+      type: object
+      properties:
+        description:
+          type: string
+        quantity:
+          type: integer
+        unit_price:
+          type: number
+          format: float
+        total:
+          type: number
+          format: float
+      required:
+        - description
+        - quantity
+        - unit_price
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Invoices
+    description: Invoice management operations
+  - name: Costs
+    description: Cost tracking and management
+  - name: Revenue
+    description: Revenue management and analytics
+  - name: Payments
+    description: Payment processing operations
+  - name: Accounts
+    description: Account management operations
+  - name: Budgets
+    description: Budget planning and tracking
