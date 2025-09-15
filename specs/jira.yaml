@@ -1,0 +1,814 @@
+openapi: 3.0.3
+info:
+  title: Mock JIRA Backend API
+  description: |
+    A comprehensive API for managing JIRA-like functionality including tickets, sprints, and events.
+    This API provides full CRUD operations for project management workflows.
+  version: 1.0.0
+  contact:
+    name: API Support
+    email: support@mockjira.com
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Development server
+  - url: https://api.mockjira.com/v1
+    description: Production server
+
+security:
+  - bearerAuth: []
+
+paths:
+  # Ticket endpoints
+  /tickets:
+    get:
+      summary: Get all tickets
+      description: Retrieve a list of all tickets with optional filtering
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [open, in_progress, done, blocked]
+        - name: assignee
+          in: query
+          schema:
+            type: string
+        - name: sprint_id
+          in: query
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: List of tickets retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tickets:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Ticket'
+                  total:
+                    type: integer
+                  limit:
+                    type: integer
+                  offset:
+                    type: integer
+    post:
+      summary: Create a new ticket
+      description: Create a new ticket in the system
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTicketRequest'
+      responses:
+        '201':
+          description: Ticket created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ticket'
+        '400':
+          description: Invalid request data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /tickets/{ticketId}:
+    get:
+      summary: Get ticket by ID
+      description: Retrieve a specific ticket by its ID
+      parameters:
+        - name: ticketId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Ticket retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ticket'
+        '404':
+          description: Ticket not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    patch:
+      summary: Update ticket
+      description: Partially update a ticket's properties
+      parameters:
+        - name: ticketId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateTicketRequest'
+      responses:
+        '200':
+          description: Ticket updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ticket'
+        '404':
+          description: Ticket not found
+        '400':
+          description: Invalid request data
+    delete:
+      summary: Delete ticket
+      description: Delete a ticket from the system
+      parameters:
+        - name: ticketId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Ticket deleted successfully
+        '404':
+          description: Ticket not found
+
+  /tickets/{ticketId}/transitions:
+    get:
+      summary: Get available transitions
+      description: Get all available status transitions for a ticket
+      parameters:
+        - name: ticketId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Available transitions retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  transitions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Transition'
+    post:
+      summary: Transition ticket
+      description: Move ticket to a new status
+      parameters:
+        - name: ticketId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                transition_id:
+                  type: string
+                comment:
+                  type: string
+      responses:
+        '200':
+          description: Transition successful
+        '400':
+          description: Invalid transition
+
+  # Sprint endpoints
+  /sprints:
+    get:
+      summary: Get all sprints
+      description: Retrieve a list of all sprints
+      parameters:
+        - name: state
+          in: query
+          schema:
+            type: string
+            enum: [active, closed, future]
+        - name: board_id
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: List of sprints retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sprints:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Sprint'
+    post:
+      summary: Create a new sprint
+      description: Create a new sprint
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSprintRequest'
+      responses:
+        '201':
+          description: Sprint created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Sprint'
+
+  /sprints/{sprintId}:
+    get:
+      summary: Get sprint by ID
+      description: Retrieve a specific sprint by its ID
+      parameters:
+        - name: sprintId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Sprint retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Sprint'
+        '404':
+          description: Sprint not found
+    patch:
+      summary: Update sprint
+      description: Update sprint details
+      parameters:
+        - name: sprintId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateSprintRequest'
+      responses:
+        '200':
+          description: Sprint updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Sprint'
+    delete:
+      summary: Delete sprint
+      description: Delete a sprint
+      parameters:
+        - name: sprintId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Sprint deleted successfully
+        '404':
+          description: Sprint not found
+
+  /sprints/{sprintId}/tickets:
+    get:
+      summary: Get tickets in sprint
+      description: Get all tickets assigned to a specific sprint
+      parameters:
+        - name: sprintId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Sprint tickets retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tickets:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Ticket'
+    post:
+      summary: Add tickets to sprint
+      description: Add tickets to a sprint
+      parameters:
+        - name: sprintId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ticket_ids:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: Tickets added to sprint
+
+  # Event endpoints
+  /events:
+    get:
+      summary: Get all events
+      description: Retrieve system events with filtering options
+      parameters:
+        - name: event_type
+          in: query
+          schema:
+            type: string
+            enum: [ticket_created, ticket_updated, ticket_deleted, sprint_started, sprint_completed, user_assigned]
+        - name: entity_id
+          in: query
+          schema:
+            type: string
+        - name: user_id
+          in: query
+          schema:
+            type: string
+        - name: from_date
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: to_date
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+      responses:
+        '200':
+          description: Events retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  events:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Event'
+                  total:
+                    type: integer
+    post:
+      summary: Create an event
+      description: Create a new system event
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateEventRequest'
+      responses:
+        '201':
+          description: Event created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Event'
+
+  /events/{eventId}:
+    get:
+      summary: Get event by ID
+      description: Retrieve a specific event by its ID
+      parameters:
+        - name: eventId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Event retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Event'
+        '404':
+          description: Event not found
+    delete:
+      summary: Delete event
+      description: Delete an event from the system
+      parameters:
+        - name: eventId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Event deleted successfully
+        '404':
+          description: Event not found
+
+  # Board endpoints
+  /boards:
+    get:
+      summary: Get all boards
+      description: Retrieve all available boards
+      responses:
+        '200':
+          description: Boards retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  boards:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Board'
+    post:
+      summary: Create a new board
+      description: Create a new project board
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateBoardRequest'
+      responses:
+        '201':
+          description: Board created successfully
+
+  /boards/{boardId}:
+    get:
+      summary: Get board by ID
+      parameters:
+        - name: boardId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Board retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Board'
+    patch:
+      summary: Update board
+      parameters:
+        - name: boardId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+      responses:
+        '200':
+          description: Board updated successfully
+    delete:
+      summary: Delete board
+      parameters:
+        - name: boardId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Board deleted successfully
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Ticket:
+      type: object
+      properties:
+        id:
+          type: string
+        key:
+          type: string
+          example: "PROJ-123"
+        summary:
+          type: string
+        description:
+          type: string
+        status:
+          type: string
+          enum: [open, in_progress, done, blocked]
+        priority:
+          type: string
+          enum: [low, medium, high, critical]
+        type:
+          type: string
+          enum: [story, bug, task, epic]
+        assignee:
+          type: string
+        reporter:
+          type: string
+        sprint_id:
+          type: integer
+          nullable: true
+        story_points:
+          type: integer
+          nullable: true
+        labels:
+          type: array
+          items:
+            type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        due_date:
+          type: string
+          format: date
+          nullable: true
+
+    CreateTicketRequest:
+      type: object
+      required:
+        - summary
+        - type
+        - reporter
+      properties:
+        summary:
+          type: string
+        description:
+          type: string
+        type:
+          type: string
+          enum: [story, bug, task, epic]
+        priority:
+          type: string
+          enum: [low, medium, high, critical]
+          default: medium
+        assignee:
+          type: string
+        reporter:
+          type: string
+        sprint_id:
+          type: integer
+        story_points:
+          type: integer
+        labels:
+          type: array
+          items:
+            type: string
+        due_date:
+          type: string
+          format: date
+
+    UpdateTicketRequest:
+      type: object
+      properties:
+        summary:
+          type: string
+        description:
+          type: string
+        status:
+          type: string
+          enum: [open, in_progress, done, blocked]
+        priority:
+          type: string
+          enum: [low, medium, high, critical]
+        assignee:
+          type: string
+        sprint_id:
+          type: integer
+        story_points:
+          type: integer
+        labels:
+          type: array
+          items:
+            type: string
+        due_date:
+          type: string
+          format: date
+
+    Sprint:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        state:
+          type: string
+          enum: [active, closed, future]
+        start_date:
+          type: string
+          format: date-time
+        end_date:
+          type: string
+          format: date-time
+        complete_date:
+          type: string
+          format: date-time
+          nullable: true
+        board_id:
+          type: integer
+        goal:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CreateSprintRequest:
+      type: object
+      required:
+        - name
+        - board_id
+      properties:
+        name:
+          type: string
+        board_id:
+          type: integer
+        start_date:
+          type: string
+          format: date-time
+        end_date:
+          type: string
+          format: date-time
+        goal:
+          type: string
+
+    UpdateSprintRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        state:
+          type: string
+          enum: [active, closed, future]
+        start_date:
+          type: string
+          format: date-time
+        end_date:
+          type: string
+          format: date-time
+        goal:
+          type: string
+
+    Event:
+      type: object
+      properties:
+        id:
+          type: string
+        event_type:
+          type: string
+          enum: [ticket_created, ticket_updated, ticket_deleted, sprint_started, sprint_completed, user_assigned]
+        entity_id:
+          type: string
+        entity_type:
+          type: string
+          enum: [ticket, sprint, board, user]
+        user_id:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+        timestamp:
+          type: string
+          format: date-time
+
+    CreateEventRequest:
+      type: object
+      required:
+        - event_type
+        - entity_id
+        - entity_type
+        - user_id
+      properties:
+        event_type:
+          type: string
+          enum: [ticket_created, ticket_updated, ticket_deleted, sprint_started, sprint_completed, user_assigned]
+        entity_id:
+          type: string
+        entity_type:
+          type: string
+          enum: [ticket, sprint, board, user]
+        user_id:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+
+    Board:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        description:
+          type: string
+        type:
+          type: string
+          enum: [scrum, kanban]
+        project_key:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CreateBoardRequest:
+      type: object
+      required:
+        - name
+        - type
+        - project_key
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        type:
+          type: string
+          enum: [scrum, kanban]
+        project_key:
+          type: string
+
+    Transition:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        to_status:
+          type: string
+        description:
+          type: string
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+        code:
+          type: integer
+        timestamp:
+          type: string
+          format: date-time
