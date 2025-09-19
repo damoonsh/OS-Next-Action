@@ -1,0 +1,5 @@
+- The events being passed are stored in temporary cache and will be written to the persistant storage
+- Data from persistent storage is used for ranking; XGBRanker with query group of last action.
+- All actions have params, some may be empty.
+- If action does not occur, the ranking value will be low and the LLM will replace with sth more sensical.
+- Random synthizing of user events could mimic the actual randomness of real-world user behaviour.
