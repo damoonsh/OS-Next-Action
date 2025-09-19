@@ -1,3 +1,16 @@
+# Setup
+
+```shell
+docker compose up
+
+or
+
+podman compose up
+```
+
+# Design Decisions
+
+Given that this is a PoC, I am not using a database but a .csv that is used to infer with XGBRanker. The XGBRanker's output is passed to LLM to be judged and refined based on guidelines and parameters passed by the end user.
 
 # Improvements
 ## Complex features
@@ -7,7 +20,10 @@
 4. Query grouping within ranker using multiple previous actions
 5. Feeding the prompt custom statistics about the current query
 
-# Auto Critique
+## Generative Recommender
+With more data collected, a generative model can be used to embed and rank more dynamically.
+
+## Auto Critique
 
 The LLM can be fed various different metrics of the data to be able to assess the ranking; in the current implemnetation it judges the ranking of a XGBRanker, and the results are interesting. An extension would be to utilize XGBRanker and LLM judgement: create training data and utilize online RL to update the LLM and XGBRanker to give more accurate prediction.
 
