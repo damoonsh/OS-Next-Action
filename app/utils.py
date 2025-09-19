@@ -1,5 +1,68 @@
-import requests
+import requests, os
 from openai import OpenAI
+from datetime import datetime
+
+def process_spec(client, m, url):
+    file_name = url.split('/')[-1].split('.')[0]
+    spec_path = f'./specs/{file_name}'
+    if os.path.exists(spec_path):
+        print('>> Spec already exists')
+        with open(spec_path, 'r') as f:
+            return f.read()
+    else:
+        if not os.path.exists('./specs'):
+            print('>> Creating specs dir')
+            os.makedirs('./specs')
+        content = get_endpoint_descriptions(client, m, url)
+        with open(spec_path, 'w') as f:
+            f.write(content)
+        
+        print(f'>> Wrote {file_name}')
+    return content
+
+def build_endpoint_map(doc_str):
+    endpoint_map = {}
+
+    for line in doc_str.splitlines():
+        line = line.strip()
+        if not line or line.startswith('#'):
+            continue
+        if line.startswith('-'):
+            parts = line[2:].split(' ', 2)
+            if len(parts) < 2:
+                continue
+            method, path = parts[0], parts[1]
+
+            if method not in endpoint_map:
+                endpoint_map[method] = []
+            endpoint_map[method].append(path)
+
+    return endpoint_map
+
+def match_endpoint(request_str, endpoint_map):
+    parts = request_str.strip().split(' ', 1)
+    if len(parts) < 2:
+        return None
+
+    method, request_path = parts[0], parts[1]
+    candidates = endpoint_map.get(method, [])
+    request_segments = request_path.strip('/').split('/')
+
+    for template in candidates:
+        template_segments = template.strip('/').split('/')
+        if len(request_segments) != len(template_segments):
+            continue
+        match = True
+        for seg, temp_seg in zip(request_segments, template_segments):
+            if temp_seg.startswith('{') and temp_seg.endswith('}'):
+                continue
+            if seg != temp_seg:
+                match = False
+                break
+        if match:
+            return template 
+
+    return None
 
 def get_endpoint_descriptions(client, m, spec_url):
     response = requests.get(spec_url)
@@ -94,10 +157,7 @@ Return a JSON array containing the most likely actions ordered by probability (m
 Analyze the interaction history and return your top 3 most likely next actions with their reasoning.
 """
 
-from datetime import datetime
-from typing import List, Dict, Any
-
-def format_params(params: Dict[str, Any]) -> str:
+def format_params(params):
     if not isinstance(params, dict) or not params:
         return ""
     
@@ -108,10 +168,7 @@ def format_params(params: Dict[str, Any]) -> str:
     param_str = ', '.join(param_pairs)
     return f" ({param_str})" if param_str else ""
 
-def generate_history(events: List[Dict[str, Any]]) -> str:
-    if not events:
-        return "No events recorded."
-    
+def generate_history(events):
     lines = ["Event Timeline:"]
     
     for i, event in enumerate(events, 1):
