@@ -1,3 +1,4 @@
+- The OpenRouter API key is passed to the shell as `AK`.
 - The events being passed are stored in temporary cache and will be written to the persistant storage
 - Data from persistent storage is used for ranking; XGBRanker with query group of last action.
 - All actions have params, some may be empty.
