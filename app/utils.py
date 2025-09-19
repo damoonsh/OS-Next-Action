@@ -1,6 +1,96 @@
 import requests, os
 from openai import OpenAI
 from datetime import datetime
+import pandas as pd
+
+FEATS = ['seconds_passed',
+ 'pa1_ss',
+ 'pa2_ss',
+ 'pa3_ss',
+ 'day',
+ 'month',
+ 'week',
+ 'year',
+ 'prev_action_1',
+ 'prev_action_2',
+ 'prev_action_3',
+ 'para1',
+ 'para2',
+ 'para3',
+ 'candidate_action']
+
+CAT_COLS = ['prev_action_1',
+ 'prev_action_2',
+ 'prev_action_3',
+ 'para1',
+ 'para2',
+ 'para3',
+ 'candidate_action']
+
+ALL_ACTIONS = ['DELETE /boards/{boardId}',
+ 'DELETE /events/{eventId}',
+ 'DELETE /sprints/{sprintId}',
+ 'DELETE /tickets/{ticketId}',
+ 'GET /boards',
+ 'GET /boards/{boardId}',
+ 'GET /events',
+ 'GET /events/{eventId}',
+ 'GET /sprints',
+ 'GET /sprints/{sprintId}',
+ 'GET /sprints/{sprintId}/tickets',
+ 'GET /tickets',
+ 'GET /tickets/{ticketId}',
+ 'GET /tickets/{ticketId}/transitions',
+ 'PATCH /boards/{boardId}',
+ 'PATCH /sprints/{sprintId}',
+ 'PATCH /tickets/{ticketId}',
+ 'POST /boards',
+ 'POST /events',
+ 'POST /sprints',
+ 'POST /sprints/{sprintId}/tickets',
+ 'POST /tickets',
+ 'POST /tickets/{ticketId}/transitions',
+ 'PUT /budgets/{budget_id}',
+ 'PUT /costs/{service_id}/{cost_id}',
+ 'PUT /invoices/{invoice_id}',
+ 'PUT /invoices/{invoice_id}/status',
+ 'PUT /revenue/{service_id}/{revenue_id}']
+
+def predict_top_k_actions(model, context_features, k=5):
+    candidates = []
+    for action in ALL_ACTIONS:
+        candidate = context_features.copy()
+        candidate['candidate_action'] = action
+        candidates.append(candidate)
+    
+    candidates_df = pd.DataFrame(candidates)
+    for col in CAT_COLS:
+        if col in candidates_df.columns:
+            candidates_df[col] = candidates_df[col].astype('category')
+    
+    X_test = candidates_df[FEATS]
+    scores = model.predict(X_test)
+    action_scores = list(zip(ALL_ACTIONS, scores))
+    ranked_actions = sorted(action_scores, key=lambda x: x[1], reverse=True)
+    
+    return ranked_actions[:k]
+
+
+def generate_history(events):
+    lines = ["Event Timeline (from earliest to latest):"]
+    
+    for event in events:
+        endpoint = event['endpoint_abstract']
+        params = event['params']
+        
+        param_str = " ".join([f'{k}:{v}' for k,v in params.items()])
+        
+        if param_str != " ":
+            lines.append(f'{endpoint} with params: {param_str}\n')
+        else:
+            lines.append(f'{endpoint}\n')
+            
+    return "\n".join(lines)
 
 def process_spec(client, m, url):
     file_name = url.split('/')[-1].split('.')[0]
@@ -64,6 +154,13 @@ def match_endpoint(request_str, endpoint_map):
 
     return None
 
+def clean_data(data, doc):
+    endpoint_map = build_endpoint_map(doc)
+    for idx in range(len(data['events'])):
+        method = data['events'][idx]['endpoint'].split(" ")[0]
+        data['events'][idx]['endpoint_abstract'] = f"{method} {match_endpoint(data['events'][idx]['endpoint'], endpoint_map)}"
+    return data
+
 def get_endpoint_descriptions(client, m, spec_url):
     response = requests.get(spec_url)
     response.raise_for_status()
@@ -99,91 +196,147 @@ def get_endpoint_descriptions(client, m, spec_url):
     return response.choices[0].message.content
 
 
-BASE_PROMPT = """
-You are an intelligent API endpoint selector for a finance SaaS application. Your role is to analyze user interaction history and determine the most appropriate next endpoint to invoke based on the context, previous actions, and available API specifications.
+PROMPT = """
+You are an intelligent API endpoint selector for a SaaS application. Your role is to analyze user interaction history, API specifications, and the ranking provided by XGBRanker — then return a refined, qualitatively justified ranking of next possible actions.
+
+## Core Directive:
+→ Use the XGBRanker’s ranking as your starting point.
+→ ONLY override or reorder actions if qualitative analysis of the API specs, interaction history, business logic, parameter dependencies, or workflow state DEMONSTRABLY justifies it.
+→ If you change the order, EXPLAIN CLEARLY in the reasoning why the XGBRanker ranking is insufficient or incorrect in this context.
 
 ## Instructions:
 
-1. **Context Analysis**: Carefully examine the interaction history to understand:
-   - What endpoints were previously called and with which parameters (shown in curly braces {{}})
-   - The sequence of user actions and their outcomes
-   - Any patterns or workflows the user is following
-   - Current state of the application based on previous API calls
+1. **Context Analysis**:
+   - Examine interaction history to understand:
+     - Endpoints previously called and their parameters (in {{}})
+     - Sequence of actions and outcomes
+     - User’s current workflow or goal
+     - Application state inferred from past calls
 
-2. **Parameter Extraction**: Pay special attention to parameters passed in previous interactions:
-   - Extract IDs, filters, and values from previous endpoint calls
-   - Consider how these parameters influence the next logical step
-   - Identify any missing parameters that might be needed
+2. **Parameter & Dependency Tracking**:
+   - Extract and track IDs, filters, and values from prior calls
+   - Identify required parameters for next actions
+   - Enforce data dependencies (e.g., can’t PATCH invoice without knowing its ID from prior GET)
 
-3. **Endpoint Selection Logic**: 
-   - Choose endpoints that logically follow from the user's current workflow
-   - Consider CRUD operation sequences (e.g., POST → GET → PATCH → DELETE)
-   - Prioritize endpoints that complete user goals or provide necessary follow-up actions
-   - Account for business logic constraints (e.g., can't delete invoices that aren't in 'draft' status)
+3. **Business Logic & Spec Compliance**:
+   - Respect constraints in API specs (e.g., status transitions, validation rules)
+   - Follow CRUD patterns where logical (POST → GET → PATCH → DELETE)
+   - Avoid actions that violate state (e.g., deleting non-draft invoices)
+   {exclude}
 
-4. **Response Format**: Provide your response as a JSON object with:
-   - `selected_endpoint`: The HTTP method and path of the recommended endpoint
-   - `reasoning`: Brief explanation of why this endpoint was chosen
-   - `suggested_parameters`: Any parameters that should be included based on context
-   - `confidence_level`: High/Medium/Low based on how certain you are about the selection
+4. **XGBRanker Integration**:
+   - Begin with the XGBRanker-provided ranking: {XGB_rankings}
+   - Do NOT change the order unless SPECIFIC evidence from specs, history, or logic requires it.
+   - If you reorder, your reasoning must explicitly state:
+     - What part of the context/specs/logic invalidates the XGBRanker’s ranking
+     - Why the new order is more appropriate
+
+5. **Output Format**:
+   → Return a JSON array of objects.
+   → Each object MUST have ONLY two keys: `"action"` and `"reasoning"`.
+   → `"reasoning"` must explain why XGBRanker order may have been changed for a specific item.
+   → Change the ranking oder: only and only if the XGBRanker's rank does not make sense at all; otherwise just explain the possible reasoning for it.
+   → Order the array by final adjusted likelihood (most probable first).
+   → Never include confidence_level, suggested_parameters, or any other keys.
+   → If no override is needed, return XGBRanker’s order with reasoning that affirms its validity.
 
 ## Interaction History:
-
 {history}
 
 ## Available API Specifications:
-
 {api_specs}
 
-## Additional Context:
-{user_prompt_addition}
-- Consider the current user's workflow state and business logic requirements
-- If multiple endpoints seem equally valid, prioritize those that:
-  1. Complete the current user task
-  2. Provide essential follow-up information
-  3. Enable the next logical step in the business process
-- Account for any error conditions or validation requirements mentioned in the API specs
-- Consider data dependencies between endpoints (e.g., needing invoice_id from previous GET /invoices/ call)
+## XGBRanker Initial Ranking:
+{XGB_rankings}
 
-## Output Format:
-Return a JSON array containing the most likely actions ordered by probability (most likely first). Each action should include the endpoint and reasoning:
-{exclude_delete}
-{{
-  {{"action": "GET /invoices/123/", "reasoning": "User just created invoice 123 and likely wants to view the complete details"}},
-  {{"action": "PATCH /invoices/123/status", "reasoning": "Natural next step would be to update the invoice status from draft to pending"}},
-  {{"action": "GET /invoices/123/line-items/", "reasoning": "User might want to review or modify the line items of the newly created invoice"}}
-}}
+## Output Example:
+[
+  {{"action": "GET /invoices/123/", "reasoning": "User just created invoice 123; XGBRanker correctly prioritizes viewing details, and specs confirm this is valid next step"}},
+  {{"action": "PATCH /invoices/123/status", "reasoning": "XGBRanker ranked this 3rd, but business logic requires status update before line-item edits — reordered to 2nd"}},
+  {{"action": "GET /invoices/123/line-items/", "reasoning": "XGBRanker ranked this 2nd, but specs indicate line-items should only be fetched after status is confirmed — kept 3rd"}}
+]
 
-Analyze the interaction history and return your top 3 most likely next actions with their reasoning.
+→ Return exactly {k} actions.
+
+Analyze carefully. Only override XGBRanker if absolutely necessary — and justify every change.
 """
 
-def format_params(params):
-    if not isinstance(params, dict) or not params:
-        return ""
+def process_events_and_query(data, raw):
     
-    param_pairs = []
-    for key, value in params.items():
-        param_pairs.append(f"{key}={value}")
+    user_id = data["user_id"] 
+    events = data["events"]
     
-    param_str = ', '.join(param_pairs)
-    return f" ({param_str})" if param_str else ""
-
-def generate_history(events):
-    lines = ["Event Timeline:"]
+    new_rows = []
+    for event in events:
+        new_row = {
+            'session_id': event.get('sesson_id', event.get('session_id', '')), # Handle typo in sesson_id
+            'user_id': user_id,
+            'timestamp': event['ts'],
+            'action': event.get('endpoint_abstract', event.get('endpoint', '')),
+            'parameters': str(list(event.get('params', [])))
+        }
+        new_rows.append(new_row)
     
-    for i, event in enumerate(events, 1):
-        ts = event.get('ts', '')
+    print(f"\nAdding {len(new_rows)} new rows from events:")
+    for i, row in enumerate(new_rows):
+        print(f"{i+1}. {row}")
+    
+    # Add new rows to raw df
+    print(new_rows)
+    new_df = pd.DataFrame(new_rows)
+    print(new_df)
+    raw_updated = pd.concat([raw, new_df], ignore_index=True)
+    print(raw_updated.iloc[-3:])
+    
+    # Apply the processing steps exactly as specified
+    df = raw_updated.sort_values(['user_id', 'timestamp']).reset_index(drop=True)
+    df['prev_action_1'] = df.groupby('user_id')['action'].shift(1)
+    df['prev_action_2'] = df.groupby('user_id')['action'].shift(2)
+    df['prev_action_3'] = df.groupby('user_id')['action'].shift(3)
+    df['timestamp'] = pd.to_datetime(df['timestamp'], format='ISO8601')
+    df['day'] = df['timestamp'].dt.day
+    df['month'] = df['timestamp'].dt.month
+    df['week'] = df['timestamp'].dt.isocalendar().week
+    df['year'] = df['timestamp'].dt.year
+    df['seconds_passed'] = (df['timestamp'].dt.hour * 3600 + 
+                           df['timestamp'].dt.minute * 60 + 
+                           df['timestamp'].dt.second)
+    df['pa1_ss'] = df['session_id'] == df.groupby('user_id')['session_id'].shift(1)
+    df['pa2_ss'] = df['session_id'] == df.groupby('user_id')['session_id'].shift(2)
+    df['pa3_ss'] = df['session_id'] == df.groupby('user_id')['session_id'].shift(3)
+    
+    row = df.iloc[-1]
+    
+    # Convert to inference format
+    X_inference = {
+        'seconds_passed': int(row['seconds_passed']),
+        'pa1_ss': float(row['pa1_ss']),
+        'pa2_ss': float(row['pa2_ss']), 
+        'pa3_ss': float(row['pa3_ss']),
+        'day': int(row['day']),
+        'month': int(row['month']),
+        'week': int(row['week']),
+        'year': int(row['year']),
+        'prev_action_1': row['prev_action_1'] if pd.notna(row['prev_action_1']) else '',
+        'prev_action_2': row['prev_action_2'] if pd.notna(row['prev_action_2']) else '',
+        'prev_action_3': row['prev_action_3'] if pd.notna(row['prev_action_3']) else '',
+        'para1': '',  # Will be filled from current action parameters
+        'para2': '',
+        'para3': ''
+    }
+    
+    # Extract parameters from the current action (the row's action, not the latest event)
+    current_action_params = row['parameters']
+    if current_action_params and current_action_params != "[]":
+        # Parse the parameters string (it's stored as a string representation of a list)
+        import ast
         try:
-            dt = datetime.fromisoformat(ts.replace('Z', '+00:00'))
-            time_only = dt.strftime('%H:%M:%S')
+            params_list = ast.literal_eval(current_action_params)
+            X_inference['para1'] = params_list[0] if len(params_list) > 0 else ''
+            X_inference['para2'] = params_list[1] if len(params_list) > 1 else ''
+            X_inference['para3'] = params_list[2] if len(params_list) > 2 else ''
         except:
-            time_only = 'Unknown'
-        
-        endpoint = event.get('endpoint', 'Unknown')
-        params = event.get('params', {})
-        
-        param_str = format_params(params)
-        
-        lines.append(f"{time_only} - {endpoint}{param_str}")
+            # If parsing fails, leave empty
+            pass
     
-    return "\n".join(lines)
+    return X_inference
