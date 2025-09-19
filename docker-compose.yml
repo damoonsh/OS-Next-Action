@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  app:
+    image: python:3.11-slim
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./app:/app
+    working_dir: /app
+    environment:
+      - AK=${AK}
+    command: >
+      sh -c "
+        pip install -r requirements.txt &&
+        python main.py
+      "
